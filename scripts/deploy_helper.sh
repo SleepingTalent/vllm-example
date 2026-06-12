@@ -64,19 +64,17 @@ deploy_vllm() {
     "app.kubernetes.io/component=serving-engine,helm-release-name=vllm-local" \
     "vllm-serving-engine" "30s" "30"
 
-  check_pods_ready "vllm" \
-    "app.kubernetes.io/component=router,helm-release-name=vllm-local" \
-    "vllm-router" "10s" "15"
-
-  print_info "Applying KEDA ScaledObject..."
+  print_info "Applying NodePort service and KEDA ScaledObject..."
+  kubectl apply -f helm/nodeport-service.yaml
   kubectl apply -f helm/keda-scaledobject.yaml
 
   print_info "vLLM stack deployed."
 }
 
 remove_vllm() {
-  print_info "Removing KEDA ScaledObject..."
+  print_info "Removing KEDA ScaledObject and NodePort service..."
   kubectl delete -f helm/keda-scaledobject.yaml --ignore-not-found=true 2>/dev/null || true
+  kubectl delete -f helm/nodeport-service.yaml --ignore-not-found=true 2>/dev/null || true
 
   print_info "Uninstalling vLLM stack..."
   helm uninstall vllm-local --namespace vllm 2>/dev/null || true

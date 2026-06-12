@@ -12,7 +12,7 @@ servingEngineSpec:
   modelSpec:
   - name: "qwen-tiny"
     enabled: true
-    repository: "lmcache/vllm-openai"           # Docker image (vLLM OpenAI server)
+    repository: "vllm/vllm-openai"              # official vLLM image; supports CPU inference
     tag: "latest"
     modelURL: "Qwen/Qwen2.5-0.5B-Instruct"      # HuggingFace model (~2GB float32)
     replicaCount: 1
@@ -26,13 +26,18 @@ servingEngineSpec:
       enabled: false                              # LMCache KV offloading is GPU-focused
     keda:
       enabled: false                              # ScaledObject applied separately
+    env:
+      - name: CUDA_VISIBLE_DEVICES
+        value: ""                                 # prevent CUDA device detection on CPU node
     vllmConfig:
       dtype: "float32"                            # float16 unsupported on CPU
       maxModelLen: 2048                           # reduce KV cache pressure on CPU
       extraArgs:
+        - "--device"
+        - "cpu"                                   # explicit CPU device; required on non-GPU nodes
         - "--enforce-eager"                       # disables CUDA graph capture; required for CPU
         - "--disable-log-requests"
 
 routerSpec:
-  enableRouter: true
-  serviceType: NodePort   # required for minikube service --url access from host
+  enableRouter: false    # lmcache/lmstack-router:latest has no ARM64 manifest;
+                         # access serving engine directly via helm/nodeport-service.yaml

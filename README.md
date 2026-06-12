@@ -1,128 +1,160 @@
-# Claude Project Template
+# vLLM on Minikube
 
-A starting point for Python projects that use Claude Code with a structured spec-driven development workflow. Drop this template into any new repo to get consistent standards, slash commands, and a repeatable feature-delivery process from idea through to implementation.
+A local vLLM inference stack on Kubernetes (Minikube), using the official
+[vllm-project/production-stack](https://github.com/vllm-project/production-stack)
+Helm chart. Serves `Qwen/Qwen2.5-0.5B-Instruct` via an OpenAI-compatible
+`/v1/chat/completions` endpoint on CPU — no GPU required.
 
----
-
-## What's Included
-
-| Path | Purpose |
-|------|---------|
-| `CLAUDE.md` | Project-wide instructions Claude follows automatically — coding standards, MCP tool rules, project structure |
-| `.claude/commands/` | Slash commands available in Claude Code sessions |
-| `.claude/skills/` | The skill logic backing each slash command |
-| `.mcp.json.example` | Template for configuring MCP servers (copy to `.mcp.json` and fill in credentials) |
+**Learning objective:** Validate the full vLLM-on-Kubernetes deployment architecture
+so the only change when moving to a real GPU cluster is flipping `requestGPU: 0 → 1`.
 
 ---
 
-## Slash Commands
+## Prerequisites
 
-The template ships with a suite of commands that walk a feature from rough idea to merged code. They are designed to be used in order, though each can also be called independently.
+Install the following on your host machine:
 
-### `/brainstorm-spec`
-
-**When to use:** You have a rough idea but aren't sure how to approach it yet — before writing any spec or code.
-
-Runs a structured dialogue to explore the problem space. Claude asks one focused question at a time, presents 2–4 concrete options at each decision point, and applies YAGNI to keep scope tight. By the end you have a clear, validated design ready to be formalised.
-
-Trigger phrases: *"let's brainstorm"*, *"I have an idea"*, *"help me think through"*, *"what are my options"*
-
----
-
-### `/create-spec`
-
-**When to use:** You know what you want to build and need a formal written specification before implementation starts.
-
-Generates a structured set of spec documents in `.claude/specs/YYYY-MM-DD-spec-name/`:
-
-- `spec.md` — main requirements document (always created)
-- `spec-lite.md` — condensed 1–3 sentence summary for AI context (always created)
-- `sub-specs/technical-spec.md` — technical requirements and dependencies (always created)
-- `sub-specs/database-schema.md` — schema changes and migrations (only if DB changes needed)
-- `sub-specs/api-spec.md` — endpoints, parameters, responses (only if API changes needed)
-
-Trigger phrases: *"create a spec"*, *"write up the spec"*, *"formalise this"*, *"document this feature"*
-
-> Can be called directly from an idea, or as the natural follow-on after `/brainstorm-spec`.
-
----
-
-### `/create-tasks`
-
-**When to use:** You have an approved spec and want to break it into a concrete, ordered task list before writing any code.
-
-Reads the spec documents and produces a `tasks.md` file in the same spec folder. Tasks are ordered for TDD — tests are defined before implementation. Requires `spec.md` to contain `Status: approved`.
-
-Trigger phrases: *"create tasks"*, *"generate tasks"*, *"break this into tasks"*, *"what do I need to build"*
-
----
-
-### `/execute-tasks`
-
-**When to use:** You have a `tasks.md` and want Claude to implement the entire spec end-to-end, one task at a time.
-
-Orchestrates the full implementation run: picks up each uncompleted parent task in order, delegates to `/execute-task` for the actual work, runs integration and regression checks between tasks, and calls final quality gates when everything is done. Can be resumed mid-way if a session is interrupted.
-
-Trigger phrases: *"execute all tasks"*, *"implement the spec"*, *"run the tasks"*, *"let's build this"*, *"start implementation"*
-
----
-
-### `/execute-task`
-
-**When to use:** You want to implement one specific numbered task from `tasks.md` rather than running the whole list.
-
-Works through all subtasks for the given parent task using a TDD workflow — reads the spec for context, writes tests first, implements to make them pass, then marks subtasks complete as it goes. Useful for resuming after a blocker or for implementing tasks selectively.
-
-Trigger phrases: *"execute task 2"*, *"implement task 1"*, *"work on task 3"*
-
----
-
-## Typical Workflow
-
-```
-/brainstorm-spec   # explore and validate the idea
-       ↓
-/create-spec       # formalise into spec documents
-       ↓           # (review and add "Status: approved" to spec.md)
-/create-tasks      # break spec into ordered implementation tasks
-       ↓           # (review tasks.md before starting)
-/execute-tasks     # implement everything, task by task
+```bash
+brew install minikube kubectl helm jq
 ```
 
-Each step produces a persistent artefact (spec files, tasks.md, committed code) so work can be paused and resumed across sessions without losing context.
+- **Docker Desktop** — must be running with VM memory set to ≥14GB
+  (Docker Desktop → Settings → Resources → Memory)
+- **macOS Apple Silicon** — tested on M-series MacBook Pro
 
 ---
 
-## Development Standards
+## Quick Start
 
-See `CLAUDE.md` for the full rules Claude follows in this project. Key points:
+```bash
+# 1. Start Minikube (6 CPUs, 12GB RAM, 80GB disk)
+./bootstrap-cluster.sh start
 
-- **Package manager:** `uv` only — no `pip`, no `requirements.txt`
-- **Python:** 3.11+, type hints, PEP 8, `pathlib.Path`, Pydantic/dataclasses over dicts
-- **Tests:** `pytest` in `tests/`, TDD, fixtures in `conftest.py`, run with `uv run pytest`
-- **Docker:** multi-stage Dockerfiles, `python:3.11-slim` base, no hardcoded secrets
-- **Project layout:** `src/<package>/`, `tests/`, `pyproject.toml` as the single source of truth
+# 2. Install KEDA and add Helm repos
+./bootstrap-cluster.sh deploy_infra
 
----
+# 3. Deploy vLLM stack (first run downloads ~2GB model — takes 5–10 min)
+./bootstrap-cluster.sh deploy_vllm
 
-## MCP Tools
+# 4. Send a smoke-test request
+./bootstrap-cluster.sh test
 
-Copy `.mcp.json.example` to `.mcp.json` and configure the servers you need. The tools Claude is required to use:
-
-| Tool | When Claude must use it |
-|------|------------------------|
-| **Context7** | Before writing any code that uses a third-party library |
-| **Fetch** | When a URL or documentation page is referenced |
-| **Brave Search** | For current version numbers, release notes, or known issues |
-| **Playwright** | Any browser interaction or JS-rendered page |
-| **Memory** | Persisting and recalling project decisions across sessions |
-| **Docker MCP** | Managing containers, images, volumes, and networks |
+# 5. Stop when done
+./bootstrap-cluster.sh stop
+```
 
 ---
 
-## Getting Started
+## Bootstrap Commands
 
-1. Copy this template into your new project directory
-2. Copy `.mcp.json.example` → `.mcp.json` and fill in your MCP server credentials
-3. Open the project in Claude Code
-4. Start with `/brainstorm-spec` or jump straight to `/create-spec` if you already know what you're building
+| Command | Description |
+|---|---|
+| `start` | Start Minikube with required resources; enable ingress and metrics-server addons |
+| `deploy_infra` | Install KEDA via Helm; add kedacore and vllm Helm repos |
+| `deploy_vllm` | Deploy vLLM production-stack via Helm; apply KEDA ScaledObject |
+| `remove_vllm` | Uninstall vLLM Helm release and delete KEDA ScaledObject |
+| `test` | Send a `/v1/chat/completions` request and print the JSON response |
+| `stop` | Stop Minikube |
+
+---
+
+## Architecture
+
+```
+Host machine (curl / Python client)
+  → minikube service vllm-local-router-service -n vllm --url
+      → LMCache Router (vllm-local-deployment-router)
+          → vLLM Serving Engine (vllm-local-qwen-tiny-deployment-vllm)
+              → Qwen2.5-0.5B-Instruct weights from PVC (10Gi)
+              → CPU inference (float32, ~1–3 tok/s)
+              → OpenAI-compatible JSON response
+```
+
+**Key resources in the `vllm` namespace:**
+
+| Resource | Kind | Purpose |
+|---|---|---|
+| `vllm-local-qwen-tiny-deployment-vllm` | Deployment | vLLM serving engine (CPU) |
+| `vllm-local-deployment-router` | Deployment | LMCache router (entry point) |
+| `vllm-local-router-service` | Service (NodePort) | External access via minikube service |
+| `vllm-local-qwen-tiny-engine-service` | Service (ClusterIP) | Internal router→engine routing |
+| `vllm-local-qwen-tiny-storage-claim` | PVC (10Gi) | Model weight cache |
+| `vllm-scaledobject` | ScaledObject (KEDA) | CPU-based autoscaling (max 2 replicas) |
+
+---
+
+## Configuration
+
+Override values are in `helm/values-local.yaml`. Key settings:
+
+| Setting | Value | Reason |
+|---|---|---|
+| `modelURL` | `Qwen/Qwen2.5-0.5B-Instruct` | Small model; fits in 8Gi CPU memory |
+| `requestGPU` | `0` | CPU-only inference |
+| `runtimeClassName` | `""` | Disables nvidia runtime |
+| `dtype` | `float32` | float16 not supported on CPU |
+| `extraArgs` | `--enforce-eager` | Disables CUDA graph capture for CPU |
+| `maxModelLen` | `2048` | Reduces KV cache pressure on CPU |
+| `pvcStorage` | `10Gi` | Persists weights; avoids re-download on restart |
+
+---
+
+## Performance Expectations
+
+| Metric | Expected |
+|---|---|
+| First token latency | 30–120s |
+| Throughput | ~1–3 tok/s |
+| Cold start (no PVC) | 5–10 min |
+| Warm start (PVC hit) | 2–4 min |
+
+These are CPU inference numbers — irrelevant to the learning objective.
+A valid JSON response from `/v1/chat/completions` is the success criterion.
+
+---
+
+## Iterating on Configuration
+
+To change `values-local.yaml` and redeploy without reinstalling KEDA:
+
+```bash
+./bootstrap-cluster.sh remove_vllm
+# edit helm/values-local.yaml
+./bootstrap-cluster.sh deploy_vllm
+./bootstrap-cluster.sh test
+```
+
+---
+
+## GPU Upgrade Path
+
+To move this deployment to a real GPU cluster, make three changes in `helm/values-local.yaml`:
+
+```yaml
+# Remove or comment out:
+runtimeClassName: ""          # → remove to use cluster default (nvidia)
+
+# In modelSpec:
+requestGPU: 1                 # was: 0
+
+# Remove from vllmConfig:
+dtype: "float32"              # → remove (use default bfloat16)
+
+# Remove from extraArgs:
+- "--enforce-eager"           # → remove (CUDA graphs improve GPU throughput)
+```
+
+Everything else — Helm chart, service exposure, KEDA autoscaling, ingress — is
+production-equivalent and transfers without changes.
+
+---
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Pod OOMKilled | Reduce `maxModelLen` in `values-local.yaml` or increase Minikube memory |
+| `float16` dtype error | Confirm `dtype: "float32"` is set in `vllmConfig` |
+| CUDA graph error | Confirm `--enforce-eager` is in `extraArgs` |
+| KEDA ScaledObject pending | Ensure `deploy_infra` ran before `deploy_vllm` |
+| Slow first response | Normal — CPU cold start; subsequent requests are faster |

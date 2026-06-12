@@ -13,7 +13,7 @@ minikube_manager() {
       ;;
     start)
       print_info "Starting Minikube..."
-      minikube start --cpus=6 --memory=12g --disk-size=40g --driver=docker
+      minikube start --cpus=6 --memory=12g --disk-size=80g --driver=docker
       print_info "Setting kubectl context to Minikube..."
       kubectl config use-context minikube
       print_warning "Current kubectl context: $(kubectl config current-context)"
@@ -27,7 +27,7 @@ minikube_manager() {
     reset)
       print_info "Resetting Minikube..."
       minikube delete
-      minikube start --cpus=6 --memory=12g --disk-size=40g --driver=docker
+      minikube start --cpus=6 --memory=12g --disk-size=80g --driver=docker
       kubectl config use-context minikube
       print_info "Minikube reset and started."
       ;;
