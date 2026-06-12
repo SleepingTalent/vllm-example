@@ -116,6 +116,145 @@ A valid JSON response from `/v1/chat/completions` is the success criterion.
 
 ---
 
+## Test Guide
+
+### 1. Start the cluster
+
+```bash
+./bootstrap-cluster.sh start
+```
+
+Expected output ends with:
+```
+[INFO] Cluster ready in Xs
+```
+
+Verify Minikube and addons are up:
+
+```bash
+minikube status
+kubectl get pods -n ingress-nginx
+kubectl get pods -n kube-system | grep metrics-server
+```
+
+---
+
+### 2. Deploy infrastructure (KEDA)
+
+```bash
+./bootstrap-cluster.sh deploy_infra
+```
+
+Expected output ends with:
+```
+[INFO] ✅ keda-operator is ready!
+[INFO] Infrastructure deployed in Xs
+```
+
+Verify KEDA is running:
+
+```bash
+kubectl get pods -n keda
+```
+
+All pods should show `Running`.
+
+---
+
+### 3. Deploy the vLLM stack
+
+```bash
+./bootstrap-cluster.sh deploy_vllm
+```
+
+This pulls `vllm/vllm-openai-cpu:latest-arm64` (~2.5GB) and downloads the model weights
+into the PVC on first run. Allow up to 15 minutes.
+
+Expected output ends with:
+```
+[INFO] ✅ vllm-serving-engine is ready!
+[INFO] vLLM stack deployed in Xs
+```
+
+Verify the pod and KEDA ScaledObject:
+
+```bash
+kubectl get pods -n vllm
+kubectl describe scaledobject vllm-scaledobject -n vllm | grep -E "Type|Reason|Message"
+```
+
+The pod should show `Running 1/1`. The ScaledObject should show `ScaledObjectReady`.
+
+---
+
+### 4. Send a test request
+
+```bash
+./bootstrap-cluster.sh test
+```
+
+Expected: a JSON response from the model, for example:
+
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "choices": [
+    {
+      "message": {
+        "role": "assistant",
+        "content": "Hello! It's an honour to meet you..."
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 35,
+    "completion_tokens": 21,
+    "total_tokens": 56
+  }
+}
+```
+
+Key things to check:
+- `finish_reason` is `"stop"` (not `"length"` or `null`)
+- `content` is a non-empty string
+- `usage.completion_tokens` is greater than 0
+
+You can also send a request manually:
+
+```bash
+kubectl port-forward svc/vllm-nodeport 18000:8000 -n vllm &
+curl -s http://localhost:18000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "messages": [{"role": "user", "content": "What is Kubernetes in one sentence?"}],
+    "max_tokens": 60
+  }' | jq .
+kill %1
+```
+
+---
+
+### 5. Stop the cluster
+
+```bash
+./bootstrap-cluster.sh stop
+```
+
+Expected output:
+```
+[INFO] Minikube stopped.
+```
+
+The PVC (`vllm-local-qwen-tiny-storage-claim`) is preserved by Helm's
+`resource-policy: keep` annotation — model weights are not re-downloaded on the
+next `deploy_vllm`.
+
+---
+
 ## Iterating on Configuration
 
 To change `values-local.yaml` and redeploy without reinstalling KEDA:
