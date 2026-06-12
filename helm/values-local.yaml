@@ -33,10 +33,7 @@ servingEngineSpec:
       dtype: "float32"                            # float16 unsupported on CPU
       maxModelLen: 2048                           # reduce KV cache pressure on CPU
       extraArgs:
-        - "--device"
-        - "cpu"                                   # explicit CPU device; required on non-GPU nodes
         - "--enforce-eager"                       # disables CUDA graph capture; required for CPU
-        - "--disable-log-requests"
 
 routerSpec:
   enableRouter: false    # lmcache/lmstack-router:latest has no ARM64 manifest;
