@@ -62,22 +62,25 @@ brew install minikube kubectl helm jq
 
 ```
 Host machine (curl / Python client)
-  → minikube service vllm-local-router-service -n vllm --url
-      → LMCache Router (vllm-local-deployment-router)
+  → kubectl port-forward svc/vllm-nodeport 18000:8000 -n vllm
+      → vllm-nodeport (NodePort Service → ClusterIP)
           → vLLM Serving Engine (vllm-local-qwen-tiny-deployment-vllm)
               → Qwen2.5-0.5B-Instruct weights from PVC (10Gi)
               → CPU inference (float32, ~1–3 tok/s)
               → OpenAI-compatible JSON response
 ```
 
+> **Note:** The LMCache router (`lmcache/lmstack-router`) has no ARM64 image manifest
+> and is disabled (`routerSpec.enableRouter: false`). `helm/nodeport-service.yaml`
+> provides a direct NodePort to the serving engine instead.
+
 **Key resources in the `vllm` namespace:**
 
 | Resource | Kind | Purpose |
 |---|---|---|
-| `vllm-local-qwen-tiny-deployment-vllm` | Deployment | vLLM serving engine (CPU) |
-| `vllm-local-deployment-router` | Deployment | LMCache router (entry point) |
-| `vllm-local-router-service` | Service (NodePort) | External access via minikube service |
-| `vllm-local-qwen-tiny-engine-service` | Service (ClusterIP) | Internal router→engine routing |
+| `vllm-local-qwen-tiny-deployment-vllm` | Deployment | vLLM serving engine (CPU, ARM64) |
+| `vllm-nodeport` | Service (NodePort) | External access via port-forward |
+| `vllm-local-qwen-tiny-engine-service` | Service (ClusterIP) | Internal cluster access |
 | `vllm-local-qwen-tiny-storage-claim` | PVC (10Gi) | Model weight cache |
 | `vllm-scaledobject` | ScaledObject (KEDA) | CPU-based autoscaling (max 2 replicas) |
 
@@ -153,7 +156,10 @@ production-equivalent and transfers without changes.
 
 | Symptom | Fix |
 |---|---|
-| Pod OOMKilled | Reduce `maxModelLen` in `values-local.yaml` or increase Minikube memory |
+| Pod OOMKilled | Reduce `maxModelLen` or lower `--gpu-memory-utilization` in `extraArgs` |
+| `Failed to infer device type` | Use `vllm/vllm-openai-cpu:latest-arm64` — the standard image is CUDA-only |
+| `unrecognized arguments: --device cpu` | Remove `--device cpu` — the CPU image doesn't need it |
+| `Available memory … less than desired utilization` | Lower `--gpu-memory-utilization` (default 0.92 requires ~12 GiB free) |
 | `float16` dtype error | Confirm `dtype: "float32"` is set in `vllmConfig` |
 | CUDA graph error | Confirm `--enforce-eager` is in `extraArgs` |
 | KEDA ScaledObject pending | Ensure `deploy_infra` ran before `deploy_vllm` |
