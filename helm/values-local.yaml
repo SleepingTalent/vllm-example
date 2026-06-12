@@ -34,6 +34,8 @@ servingEngineSpec:
       maxModelLen: 2048                           # reduce KV cache pressure on CPU
       extraArgs:
         - "--enforce-eager"                       # disables CUDA graph capture; required for CPU
+        - "--gpu-memory-utilization"
+        - "0.6"                                   # CPU backend: fraction of node RAM to reserve (0.92 default > 8.32GiB free)
 
 routerSpec:
   enableRouter: false    # lmcache/lmstack-router:latest has no ARM64 manifest;
