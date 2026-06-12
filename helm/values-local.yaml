@@ -12,8 +12,8 @@ servingEngineSpec:
   modelSpec:
   - name: "qwen-tiny"
     enabled: true
-    repository: "vllm/vllm-openai"              # official vLLM image; supports CPU inference
-    tag: "latest"
+    repository: "vllm/vllm-openai-cpu"           # CPU-specific image with ARM64 support
+    tag: "latest-arm64"
     modelURL: "Qwen/Qwen2.5-0.5B-Instruct"      # HuggingFace model (~2GB float32)
     replicaCount: 1
     requestCPU: 4
