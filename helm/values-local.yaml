@@ -1,0 +1,38 @@
+# CPU-only local override for vllm-project/production-stack
+# Deploy on Minikube (Apple Silicon) with no GPU.
+# GPU upgrade path: remove runtimeClassName overrides, set requestGPU: 1,
+#   remove dtype: float32 and --enforce-eager from extraArgs.
+
+servingEngineSpec:
+  runtimeClassName: ""    # override global nvidia default; CPU-only
+
+  # startupProbe default (failureThreshold: 60 x periodSeconds: 10 = 600s)
+  # covers model download on cold start — no override needed.
+
+  modelSpec:
+  - name: "qwen-tiny"
+    enabled: true
+    repository: "lmcache/vllm-openai"           # Docker image (vLLM OpenAI server)
+    tag: "latest"
+    modelURL: "Qwen/Qwen2.5-0.5B-Instruct"      # HuggingFace model (~2GB float32)
+    replicaCount: 1
+    requestCPU: 4
+    requestMemory: "8Gi"
+    requestGPU: 0
+    runtimeClassName: ""                          # override per-model nvidia default
+    pvcStorage: "10Gi"                            # persists weights; avoids re-download
+    shmSize: "1Gi"                                # reduced from 20Gi; CPU needs minimal shm
+    lmcacheConfig:
+      enabled: false                              # LMCache KV offloading is GPU-focused
+    keda:
+      enabled: false                              # ScaledObject applied separately
+    vllmConfig:
+      dtype: "float32"                            # float16 unsupported on CPU
+      maxModelLen: 2048                           # reduce KV cache pressure on CPU
+      extraArgs:
+        - "--enforce-eager"                       # disables CUDA graph capture; required for CPU
+        - "--disable-log-requests"
+
+routerSpec:
+  enableRouter: true
+  serviceType: NodePort   # required for minikube service --url access from host
