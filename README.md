@@ -60,14 +60,35 @@ brew install minikube kubectl helm jq
 
 ## Architecture
 
-```
-Host machine (curl / Python client)
-  → kubectl port-forward svc/vllm-nodeport 18000:8000 -n vllm
-      → vllm-nodeport (NodePort Service → ClusterIP)
-          → vLLM Serving Engine (vllm-local-qwen-tiny-deployment-vllm)
-              → Qwen2.5-0.5B-Instruct weights from PVC (10Gi)
-              → CPU inference (float32, ~1–3 tok/s)
-              → OpenAI-compatible JSON response
+```mermaid
+graph TD
+    Client["Host Machine\ncurl / Python client"]
+
+    subgraph host["Host — port-forward tunnel"]
+        PF["localhost:18000 → svc/vllm-nodeport:8000"]
+    end
+
+    subgraph vllm_ns["Kubernetes — vllm namespace"]
+        NP["vllm-nodeport\nService — NodePort"]
+
+        subgraph engine["Serving Engine Pod"]
+            VLLM["vllm/vllm-openai-cpu:latest-arm64\nQwen2.5-0.5B-Instruct\nCPU · float32 · max_len 2048"]
+        end
+
+        PVC[("PVC — 10Gi\nModel Weight Cache")]
+        SO["vllm-scaledobject\nKEDA ScaledObject\nCPU trigger · min 1 · max 2 replicas"]
+    end
+
+    subgraph keda_ns["Kubernetes — keda namespace"]
+        KEDA["KEDA Operator"]
+    end
+
+    Client -->|"POST /v1/chat/completions"| PF
+    PF --> NP
+    NP --> VLLM
+    VLLM <-->|"model weights"| PVC
+    KEDA -->|"manages"| SO
+    SO -->|"scales"| engine
 ```
 
 > **Note:** The LMCache router (`lmcache/lmstack-router`) has no ARM64 image manifest
