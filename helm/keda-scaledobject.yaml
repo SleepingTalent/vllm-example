@@ -1,0 +1,27 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: vllm-scaledobject
+  namespace: vllm
+spec:
+  scaleTargetRef:
+    name: vllm-local-qwen-tiny-deployment-vllm
+  minReplicaCount: 1
+  maxReplicaCount: 2    # hard cap — 3 x 8Gi = 24Gi exceeds 12g Minikube cluster
+  pollingInterval: 15
+  cooldownPeriod: 60
+  triggers:
+    # CPU trigger — no Prometheus dependency; scales when vLLM pod CPU > 80%
+    # Demonstrates the KEDA ScaledObject pattern on Minikube without full observability stack.
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "80"
+
+    # Production equivalent (Prometheus trigger — requires prometheus-community/kube-prometheus-stack):
+    # - type: prometheus
+    #   metadata:
+    #     serverAddress: "http://prometheus-operated.monitoring.svc:9090"
+    #     metricName: "vllm:num_requests_waiting"
+    #     query: "vllm:num_requests_waiting{namespace='vllm'}"
+    #     threshold: "5"
