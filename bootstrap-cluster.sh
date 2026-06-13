@@ -9,7 +9,7 @@ source "${SCRIPT_DIR}/scripts/deploy_helper.sh"
 source "${SCRIPT_DIR}/scripts/test_helper.sh"
 
 usage() {
-  print_error "Usage: $0 {start|deploy_infra|deploy_vllm|remove_vllm|test|stop}"
+  print_error "Usage: $0 {start|deploy_infra|deploy_vllm|remove_vllm|test|stop|reset}"
   print_error ""
   print_error "Commands:"
   print_error "  start         Start Minikube with required resources and enable addons"
@@ -18,6 +18,7 @@ usage() {
   print_error "  remove_vllm   Uninstall vLLM stack and remove KEDA ScaledObject"
   print_error "  test          Send a smoke-test request to /v1/chat/completions"
   print_error "  stop          Stop Minikube"
+  print_error "  reset         Delete cluster, rebuild from scratch, and redeploy everything"
   exit 1
 }
 
@@ -61,6 +62,18 @@ case "$1" in
   stop)
     print_header "Stopping Cluster"
     minikube_manager stop
+    ;;
+  reset)
+    start_time=$(date +%s)
+    print_header "Resetting Cluster"
+    minikube_manager reset
+    print_info "Enabling Minikube addons..."
+    minikube addons enable ingress
+    minikube addons enable metrics-server
+    deploy_infra
+    deploy_vllm
+    end_time=$(date +%s)
+    print_info "Cluster reset and redeployed in $((end_time - start_time))s"
     ;;
   *)
     usage
