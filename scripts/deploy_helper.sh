@@ -42,7 +42,7 @@ deploy_infra() {
   helm repo update
 
   print_info "Installing KEDA..."
-  helm install keda kedacore/keda \
+  helm upgrade --install keda kedacore/keda \
     --namespace keda \
     --create-namespace \
     --wait
@@ -53,7 +53,7 @@ deploy_infra() {
 
 deploy_vllm() {
   print_info "Installing vLLM production stack..."
-  helm install vllm-local vllm/vllm-stack \
+  helm upgrade --install vllm-local vllm/vllm-stack \
     --namespace vllm \
     --create-namespace \
     -f helm/values-local.yaml \
