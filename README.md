@@ -64,31 +64,46 @@ brew install minikube kubectl helm jq
 graph TD
     Client["Host Machine\ncurl / Python client"]
 
-    subgraph host["Host — port-forward tunnel"]
-        PF["localhost:18000 → svc/vllm-nodeport:8000"]
+    subgraph host["Host"]
+        PF["kubectl port-forward\nlocalhost:18000 → 8000"]
     end
 
-    subgraph vllm_ns["Kubernetes — vllm namespace"]
-        NP["vllm-nodeport\nService — NodePort"]
+    subgraph minikube["Minikube"]
 
-        subgraph engine["Serving Engine Pod"]
-            VLLM["vllm/vllm-openai-cpu:latest-arm64\nQwen2.5-0.5B-Instruct\nCPU · float32 · max_len 2048"]
+        subgraph vllm_ns["vllm namespace"]
+            NP["vllm-nodeport\nNodePort :8000 → :32740"]
+            ESVC["vllm-local-qwen-tiny-engine-service\nClusterIP :80 / :55555 / :9999"]
+
+            subgraph deploy["Deployment: vllm-local-qwen-tiny-deployment-vllm"]
+                RS["ReplicaSet\n745fc54b6b"]
+                POD["Pod\nvllm/vllm-openai-cpu:latest-arm64\nQwen2.5-0.5B-Instruct\nCPU · float32 · max_len 2048"]
+                RS --> POD
+            end
+
+            PVC[("PVC: vllm-local-qwen-tiny-storage-claim\n10Gi — model weights")]
+            HPA["HPA: keda-hpa-vllm-scaledobject\nCPU 0% / 80% threshold"]
+            SO["ScaledObject: vllm-scaledobject\nmin 1 · max 2 replicas"]
         end
 
-        PVC[("PVC — 10Gi\nModel Weight Cache")]
-        SO["vllm-scaledobject\nKEDA ScaledObject\nCPU trigger · min 1 · max 2 replicas"]
-    end
+        subgraph keda_ns["keda namespace"]
+            OP["keda-operator"]
+            MAPISERVER["keda-operator-metrics-apiserver"]
+            WEBHOOK["keda-admission-webhooks"]
+        end
 
-    subgraph keda_ns["Kubernetes — keda namespace"]
-        KEDA["KEDA Operator"]
     end
 
     Client -->|"POST /v1/chat/completions"| PF
-    PF --> NP
-    NP --> VLLM
-    VLLM <-->|"model weights"| PVC
-    KEDA -->|"manages"| SO
-    SO -->|"scales"| engine
+    PF -->|"port-forward"| NP
+    NP -->|":8000"| POD
+    ESVC -.->|"internal ClusterIP"| POD
+    POD <-->|"model weights"| PVC
+
+    OP -->|"reads metrics"| MAPISERVER
+    OP -->|"manages"| SO
+    SO -->|"drives"| HPA
+    HPA -->|"scales"| deploy
+    WEBHOOK -.->|"validates resources"| vllm_ns
 ```
 
 > **Note:** The LMCache router (`lmcache/lmstack-router`) has no ARM64 image manifest
